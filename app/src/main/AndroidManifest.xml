@@ -4,7 +4,7 @@
     <uses-permission android:name="android.permission.INTERNET" />
 
     <application
-        android:label="VideoGrab"
+        android:label="العرداوي"
         android:extractNativeLibs="true"
         android:theme="@android:style/Theme.Material.Light.NoActionBar">
 
