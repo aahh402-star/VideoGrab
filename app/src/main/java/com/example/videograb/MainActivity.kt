@@ -65,6 +65,7 @@ class MainActivity : Activity() {
     private val handler = Handler(Looper.getMainLooper())
     private var pendingRun: Runnable? = null
     private val urlRegex = Regex("https?://\\S+")
+    private val defaultHeights = listOf(1080, 720, 480, 360)
 
     private fun dp(v: Int) = (v * resources.displayMetrics.density).toInt()
 
@@ -208,7 +209,7 @@ class MainActivity : Activity() {
                 pendingRun?.let { handler.removeCallbacks(it) }
                 val r = Runnable { checkInput(false) }
                 pendingRun = r
-                handler.postDelayed(r, 350)
+                handler.postDelayed(r, 150)
             }
         })
         val row = LinearLayout(this)
@@ -297,7 +298,10 @@ class MainActivity : Activity() {
             lastUrl = shared
             pendingUrl = shared
             input.setText(shared)
-            showMsg("جاري تجهيز المحرك...")
+            currentUrl = shared
+            currentPlaylist = isPlaylist(shared)
+            currentTitle = "فيديو"
+            showOptions("جاري تجهيز المحرك...", defaultHeights, null)
         }
 
         thread {
@@ -405,28 +409,31 @@ class MainActivity : Activity() {
     }
 
     private fun analyze(url: String) {
-        if (!ready) {
-            pendingUrl = url
-            showMsg("جاري تجهيز المحرك...")
-            return
-        }
         gen += 1
         val my = gen
         currentUrl = url
         currentPlaylist = isPlaylist(url)
-        infoCard.visibility = View.GONE
+        selectedQ = 0
         if (!Hub.active && Hub.text.isNotEmpty()) {
             Hub.text = ""
             renderProgress()
         }
+        showMsg("")
 
         if (currentPlaylist) {
-            showOptions("قائمة تشغيل كاملة", listOf(1080, 720, 480, 360), null)
-            showMsg("")
+            currentTitle = "قائمة تشغيل كاملة"
+            showOptions(currentTitle, defaultHeights, null)
             return
         }
 
-        showMsg("جاري التعرف على الفيديو...")
+        currentTitle = "فيديو"
+        if (!ready) {
+            pendingUrl = url
+            showOptions("جاري تجهيز المحرك...", defaultHeights, null)
+            return
+        }
+        showOptions("جاري جلب معلومات الفيديو...", defaultHeights, null)
+
         thread {
             try {
                 val yt = YoutubeDL.getInstance()
@@ -434,7 +441,9 @@ class MainActivity : Activity() {
                     yt.getInfo(infoRequest(url))
                 } catch (e: Exception) {
                     if (my != gen) return@thread
-                    showMsg("نحدّث المحرك ونعيد المحاولة...")
+                    runOnUiThread {
+                        if (my == gen) titleView.text = "نحدّث المحرك ونعيد المحاولة..."
+                    }
                     yt.updateYoutubeDL(application)
                     yt.getInfo(infoRequest(url))
                 }
@@ -445,25 +454,28 @@ class MainActivity : Activity() {
                     val v = f.vcodec.toString()
                     if (h >= 144 && v != "none" && v != "null") h else null
                 }.distinct().sortedDescending()
-                if (heights.isEmpty()) heights = listOf(1080, 720, 480, 360)
+                if (heights.isEmpty()) heights = defaultHeights
                 val thumbUrl: String? = info.thumbnail
                 runOnUiThread {
                     if (my == gen) {
+                        currentTitle = title
                         showOptions(title, heights, thumbUrl)
-                        showMsg("")
                     }
                 }
             } catch (e: Exception) {
                 if (my == gen) {
                     lastUrl = ""
-                    showMsg("فشل التعرف على الرابط ❌\n" + (e.message ?: "").take(400))
+                    runOnUiThread {
+                        if (my == gen) {
+                            titleView.text = "تعذّر جلب التفاصيل، تكدر تنزّل بالجودات الافتراضية"
+                        }
+                    }
                 }
             }
         }
     }
 
     private fun showOptions(title: String, heights: List<Int>, thumbUrl: String?) {
-        currentTitle = title
         titleView.text = title
         chipBox.removeAllViews()
         chips.clear()
@@ -474,7 +486,8 @@ class MainActivity : Activity() {
         items.add(Pair("🎵 MP3 صوت", -1))
         items.add(Pair("🎵 M4A صوت", -2))
 
-        selectedQ = 0
+        if (items.none { it.second == selectedQ }) selectedQ = 0
+
         var i = 0
         while (i < items.size) {
             val row = LinearLayout(this)
