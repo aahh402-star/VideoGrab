@@ -282,3 +282,59 @@ class DownloadService : Service() {
             ?: return false
         contentResolver.openOutputStream(uri)?.use { out ->
             f.inputStream().use { it.copyTo(out) }
+        } ?: return false
+        Store.add(this, f.nameWithoutExtension, uri.toString(), mime)
+        return true
+    }
+
+    private fun setState(active: Boolean, p: Int, indet: Boolean, text: String) {
+        Hub.active = active
+        Hub.progress = p
+        Hub.indeterminate = indet
+        Hub.text = text
+        Hub.post()
+        getSystemService(NotificationManager::class.java).notify(ID, notif(text, p, indet))
+    }
+
+    private fun finish(shortMsg: String, fullMsg: String) {
+        Hub.active = false
+        Hub.progress = 0
+        Hub.indeterminate = false
+        Hub.text = fullMsg
+        Hub.post()
+        val open = PendingIntent.getActivity(
+            this, 0, Intent(this, MainActivity::class.java),
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+        )
+        val n = Notification.Builder(this, CH_DONE)
+            .setSmallIcon(android.R.drawable.stat_sys_download_done)
+            .setContentTitle("العرداوي")
+            .setContentText(shortMsg)
+            .setContentIntent(open)
+            .setAutoCancel(true)
+            .build()
+        getSystemService(NotificationManager::class.java).notify(doneId++, n)
+    }
+
+    private fun notif(text: String, p: Int, indet: Boolean): Notification {
+        val flags = PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+        val open = PendingIntent.getActivity(this, 0, Intent(this, MainActivity::class.java), flags)
+        val cancelIntent = Intent(this, DownloadService::class.java).putExtra("cmd", "cancel")
+        val cancel = PendingIntent.getService(this, 1, cancelIntent, flags)
+        val action = Notification.Action.Builder(
+            Icon.createWithResource(this, android.R.drawable.ic_menu_close_clear_cancel),
+            "إلغاء",
+            cancel
+        ).build()
+        return Notification.Builder(this, CH)
+            .setSmallIcon(android.R.drawable.stat_sys_download)
+            .setContentTitle("العرداوي")
+            .setContentText(text.replace("\n", " • "))
+            .setContentIntent(open)
+            .setOngoing(true)
+            .setOnlyAlertOnce(true)
+            .setProgress(100, p, indet)
+            .addAction(action)
+            .build()
+    }
+}
